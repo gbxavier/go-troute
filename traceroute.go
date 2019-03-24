@@ -34,10 +34,90 @@ func createICMPEcho(ICMPTypeEcho icmp.Type) (req []byte, err error) {
 	return
 }
 
+func callHop(host string, ttl int, req []byte, proto string, dialProto string, dialDest string, ipVersion int, listenAddress string, timeout int) (currentHop Hop, err error){
 
+	// Opening connection to host
+	conn, err := net.Dial(dialProto, dialDest)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer conn.Close()
+
+	// Opening outbound ipv4 or ipv6 connection, for ipv4 or ipv6 protocols, respectively
+	if ipVersion == 4 {
+
+		newConn := ipv4.NewConn(conn)
+		if err = newConn.SetTTL(ttl); err != nil {
+			fmt.Println(err)
+			return
+		}
+
+	} else {
+
+		newConn := ipv6.NewConn(conn)
+		if err = newConn.SetHopLimit(ttl); err != nil {
+			fmt.Println(err)
+			return
+		}
+
+	}
+
+	// Opening Inbound ICMP Listener
+	packetConn, err := icmp.ListenPacket("ip"+fmt.Sprintf("%d", ipVersion)+":"+"icmp", listenAddress)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer packetConn.Close()
+
+	// Starting counter and sending request
+	start := time.Now()
+	_, err = conn.Write(req)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	if err = packetConn.SetDeadline(start.Add(time.Second * time.Duration(timeout))); err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	readBytes := make([]byte, 1500)                              // 1500 Bytes ethernet MTU
+	returnCode, sAddr, connErr := packetConn.ReadFrom(readBytes) // first return value (Code) might be useful
+	fmt.Println(returnCode)
+	fmt.Println(sAddr)
+	fmt.Println(connErr)
+
+	latency := time.Since(start)
+	fmt.Println(latency)
+	if connErr == nil {
+		addrIP := net.ParseIP(sAddr.String())
+		if addrIP == nil {
+			fmt.Println("\ntimeout reached")
+		}
+	}
+
+	currentHop = Hop{
+		TTL     : ttl,
+		AddrIP  : net.ParseIP(sAddr.String()),
+		AddrDNS : "",
+		Latency : latency,
+		Err     : nil,
+	}
+
+	return currentHop, nil
+}
 
 func traceRoute(host string, maxTTL *int, firstHop *int, probes *int, proto string, ipVersion int) {
 
+	var dialProto string
+	var dialDest = host
+	var req = []byte{}
+	const DefaultTimeoutS int = 3
+	ttl := *firstHop
+	
 	// Try to resolve the host provided, if name returns the ip address
 	ipAddr, err := net.ResolveIPAddr("ip", host)
 	if err != nil {
@@ -50,15 +130,8 @@ func traceRoute(host string, maxTTL *int, firstHop *int, probes *int, proto stri
 	// User feedback of what will happen
 	fmt.Printf("Tracing route to %v [%v], over a maximum of %d hops, starting from %d:\n", host, ipAddr, *maxTTL, *firstHop)
 
-	const DefaultTimeoutS int = 3
-
 	// Specifying the configuration used in each iteration
-	ttl := *firstHop
 	//retry := 0
-
-	var dialProto string
-	var dialDest = host
-	var req = []byte{}
 
 	if proto == "udp" {
 
@@ -95,69 +168,12 @@ func traceRoute(host string, maxTTL *int, firstHop *int, probes *int, proto stri
 
 	for {
 
-		// Opening connection to host
-		conn, err := net.Dial(dialProto, dialDest)
+		current, err := callHop(host, ttl, req, proto, dialProto, dialDest, ipVersion, listenAddress, DefaultTimeoutS)
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
-		defer conn.Close()
-
-		// Opening outbound ipv4 or ipv6 connection, for ipv4 or ipv6 protocols, respectively
-		if ipVersion == 4 {
-
-			newConn := ipv4.NewConn(conn)
-			if err = newConn.SetTTL(ttl); err != nil {
-				fmt.Println(err)
-				return
-			}
-
-		} else {
-
-			newConn := ipv6.NewConn(conn)
-			if err = newConn.SetHopLimit(ttl); err != nil {
-				fmt.Println(err)
-				return
-			}
-
-		}
-
-		// Opening Inbound ICMP Listener
-		packetConn, err := icmp.ListenPacket("ip"+fmt.Sprintf("%d", ipVersion)+":"+"icmp", listenAddress)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		defer packetConn.Close()
-
-		// Starting counter and sending request
-		start := time.Now()
-		_, err = conn.Write(req)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-
-		if err = packetConn.SetDeadline(start.Add(time.Second * time.Duration(DefaultTimeoutS))); err != nil {
-			fmt.Println(err)
-			return
-		}
-
-		readBytes := make([]byte, 1500)                              // 1500 Bytes ethernet MTU
-		returnCode, sAddr, connErr := packetConn.ReadFrom(readBytes) // first return value (Code) might be useful
-		fmt.Println(returnCode)
-		fmt.Println(sAddr)
-		fmt.Println(connErr)
-
-		latency := time.Since(start)
-		fmt.Println(latency)
-		if connErr == nil {
-			addrIP := net.ParseIP(sAddr.String())
-			if addrIP == nil {
-				fmt.Println("\ntimeout reached")
-			}
-		}
-
+		fmt.Println(current)
 	}
 
 }
