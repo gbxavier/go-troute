@@ -132,6 +132,9 @@ func traceRoute(host string, maxTTL *int, firstHop *int, proto string, ipVersion
 	ttl := *firstHop
 	var found = false
 	
+	// Hop set with all the hops, returned from this.
+	var hopSet []Hop
+
 	// Try to resolve the host provided, if name returns the ip address
 	ipAddr, err := net.ResolveIPAddr(fmt.Sprintf("ip%d", ipVersion), host)
 	if err != nil {
@@ -143,9 +146,7 @@ func traceRoute(host string, maxTTL *int, firstHop *int, proto string, ipVersion
 	// User feedback of what will happen
 	fmt.Printf("Tracing route to %v [%v], over a maximum of %d hops, starting from %d:\n\n", host, ipAddr, *maxTTL, *firstHop)
 
-	// Specifying the configuration used in each iteration
-	//retry := 0
-
+	// Configuring for UDP packets or ICMP packets
 	if proto == "udp" {
 
 		// Sending UDP packets
@@ -187,7 +188,9 @@ func traceRoute(host string, maxTTL *int, firstHop *int, proto string, ipVersion
 			return
 		}
 		printHop(current)
-		
+	
+		hopSet = append(hopSet, current)
+
 		if current.AddrIP.String() == ipAddr.IP.String(){
 			found = true
 			break
@@ -201,7 +204,7 @@ func traceRoute(host string, maxTTL *int, firstHop *int, proto string, ipVersion
 		fmt.Println("\n Trace Complete")
 	}
 
-
+	
 }
 
 func main() {
