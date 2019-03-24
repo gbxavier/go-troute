@@ -123,17 +123,17 @@ func printHop(hop Hop){
 
 }
 
-func traceRoute(host string, maxTTL *int, firstHop *int, proto string, ipVersion int) {
+// Hop set with all the hops, returned from this.
+func traceRoute(host string, maxTTL *int, firstHop *int, proto string, ipVersion int) (hopSet []Hop) {
 
 	var dialProto string
 	var dialDest = host
+	var listenAddress string
 	var req = []byte{}
 	const DefaultTimeoutS int = 3
 	ttl := *firstHop
 	var found = false
 	
-	// Hop set with all the hops, returned from this.
-	var hopSet []Hop
 
 	// Try to resolve the host provided, if name returns the ip address
 	ipAddr, err := net.ResolveIPAddr(fmt.Sprintf("ip%d", ipVersion), host)
@@ -163,17 +163,20 @@ func traceRoute(host string, maxTTL *int, firstHop *int, proto string, ipVersion
 		if ipVersion == 4 {
 			req, err = createICMPEcho(ipv4.ICMPTypeEcho)
 			if err != nil {
+				fmt.Println(err)
+				os.Exit(1)
 				return
 			}
 		} else {
 			req, err = createICMPEcho(ipv6.ICMPTypeEchoRequest)
 			if err != nil {
+				fmt.Println(err)
+				os.Exit(1)
 				return
 			}
 		}
 	}
 
-	var listenAddress string
 	if ipVersion == 4 {
 		listenAddress = "0.0.0.0"
 	} else {
@@ -185,6 +188,7 @@ func traceRoute(host string, maxTTL *int, firstHop *int, proto string, ipVersion
 		current, err := callHop(host, i, req, proto, dialProto, dialDest, ipVersion, listenAddress, DefaultTimeoutS)
 		if err != nil {
 			fmt.Println(err)
+			os.Exit(1)
 			return
 		}
 		printHop(current)
@@ -204,7 +208,7 @@ func traceRoute(host string, maxTTL *int, firstHop *int, proto string, ipVersion
 		fmt.Println("\n Trace Complete")
 	}
 
-	
+	return hopSet
 }
 
 func main() {
@@ -236,12 +240,44 @@ func main() {
 		proto = "udp"
 	}
 
+	// Check if the target host is provided, and exits if not
 	if len(host) == 0 {
 		fmt.Println("Please, specify a host")
 		os.Exit(1)
 		return
 	}
 
-	traceRoute(host, maxTTL, firstHop,  proto, ipVersion)
+	// The traceroute execution itself
+	hopSet := traceRoute(host, maxTTL, firstHop,  proto, ipVersion)
+
+	
+	//Removing timed out hops to calculate response beetween consecutive hops
+	for i, hop := range hopSet {
+        if hop.AddrIP == nil {
+            hopSet = append(hopSet[:i], hopSet[i+1:]...)
+        }
+    }
+
+	var maxLeft Hop
+	var maxRight Hop
+	var maxLatency time.Duration
+
+	// This section compares the time between hops, and store these.
+	for indexLeft, indexRight := 0, 1; indexRight < len(hopSet) ; indexLeft, indexRight = indexLeft+1, indexRight+1{
+		
+		if (hopSet[indexRight].Latency - hopSet[indexLeft].Latency) > maxLatency {
+			
+			maxLatency = hopSet[indexRight].Latency - hopSet[indexLeft].Latency
+			maxLeft = hopSet[indexLeft]
+			maxRight = hopSet[indexRight]
+
+		}
+		
+	}
+
+	fmt.Printf("\nThe largest difference in response time between consecutive hops is %v\n", maxLatency)
+	fmt.Println("Between hops: ")
+	printHop(maxLeft)
+	printHop(maxRight)
 
 }
