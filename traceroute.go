@@ -134,6 +134,11 @@ func traceRoute(host string, maxTTL *int, firstHop *int, proto string, ipVersion
 	ttl := *firstHop
 	var found = false
 	
+	// Check if the target host is provided, and exits if not
+	if len(host) == 0 {
+		fmt.Println("Please, specify a host")
+		return
+	}
 
 	// Try to resolve the host provided, if name returns the ip address
 	ipAddr, err := net.ResolveIPAddr(fmt.Sprintf("ip%d", ipVersion), host)
@@ -240,12 +245,6 @@ func main() {
 		proto = "udp"
 	}
 
-	// Check if the target host is provided, and exits if not
-	if len(host) == 0 {
-		fmt.Println("Please, specify a host")
-		os.Exit(1)
-		return
-	}
 
 	// The traceroute execution itself
 	hopSet := traceRoute(host, maxTTL, firstHop,  proto, ipVersion)
