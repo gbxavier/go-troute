@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"flag"
+	"errors"
 	"math/rand"
 	"net"
 	"os"
@@ -16,7 +17,7 @@ import (
 type Hop struct {
 	TTL     int
 	AddrIP  net.IP
-	AddrDNS string
+	AddrDNS []string
 	Latency time.Duration
 	Err     error
 }
@@ -35,6 +36,7 @@ func createICMPEcho(ICMPTypeEcho icmp.Type) (req []byte, err error) {
 }
 
 func callHop(host string, ttl int, req []byte, proto string, dialProto string, dialDest string, ipVersion int, listenAddress string, timeout int) (currentHop Hop, err error){
+	
 
 	// Opening connection to host
 	conn, err := net.Dial(dialProto, dialDest)
@@ -84,33 +86,33 @@ func callHop(host string, ttl int, req []byte, proto string, dialProto string, d
 		return
 	}
 
-	readBytes := make([]byte, 1500)                              // 1500 Bytes ethernet MTU
-	returnCode, sAddr, connErr := packetConn.ReadFrom(readBytes) // first return value (Code) might be useful
-	fmt.Println(returnCode)
-	fmt.Println(sAddr)
-	fmt.Println(connErr)
+	// Reading ICMP packet, if exists.
+	readBytes := make([]byte, 1500)                     // 1500 Bytes ethernet MTU
+	_, sAddr, connErr := packetConn.ReadFrom(readBytes) 
 
 	latency := time.Since(start)
-	fmt.Println(latency)
+	
+	currentHop = Hop{
+		TTL     : ttl,
+		Latency : latency,
+		Err     : connErr,
+	}	
+	
 	if connErr == nil {
-		addrIP := net.ParseIP(sAddr.String())
-		if addrIP == nil {
-			fmt.Println("\ntimeout reached")
+		currentHop.AddrIP = net.ParseIP(sAddr.String())
+		if currentHop.AddrIP == nil {
+			currentHop.Err = errors.New("Timeout")
+		}else{
+			currentHop.AddrDNS, _ = net.LookupAddr(currentHop.AddrIP.String())
 		}
 	}
 
-	currentHop = Hop{
-		TTL     : ttl,
-		AddrIP  : net.ParseIP(sAddr.String()),
-		AddrDNS : "",
-		Latency : latency,
-		Err     : nil,
-	}
+
 
 	return currentHop, nil
 }
 
-func traceRoute(host string, maxTTL *int, firstHop *int, probes *int, proto string, ipVersion int) {
+func traceRoute(host string, maxTTL *int, firstHop *int, proto string, ipVersion int) {
 
 	var dialProto string
 	var dialDest = host
@@ -119,10 +121,9 @@ func traceRoute(host string, maxTTL *int, firstHop *int, probes *int, proto stri
 	ttl := *firstHop
 	
 	// Try to resolve the host provided, if name returns the ip address
-	ipAddr, err := net.ResolveIPAddr("ip", host)
+	ipAddr, err := net.ResolveIPAddr(fmt.Sprintf("ip%d", ipVersion), host)
 	if err != nil {
-
-		fmt.Println("Error in resolving IP")
+		fmt.Println("Error resolving IP")
 		os.Exit(1)
 		return
 	}
@@ -166,14 +167,16 @@ func traceRoute(host string, maxTTL *int, firstHop *int, probes *int, proto stri
 		listenAddress = "::0"
 	}
 
-	for {
+	for i := ttl; i <= *maxTTL; i++ {
 
-		current, err := callHop(host, ttl, req, proto, dialProto, dialDest, ipVersion, listenAddress, DefaultTimeoutS)
+		current, err := callHop(host, i, req, proto, dialProto, dialDest, ipVersion, listenAddress, DefaultTimeoutS)
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
 		fmt.Println(current)
+
+
 	}
 
 }
@@ -188,10 +191,8 @@ func main() {
 	// The Default values are setted above, but the user is able to change this values passing the respective flags to the command
 	// maxTTL is equals the last TTL used on calls
 	// firstHop is the TTL used in the first call
-	// probes is the number of calls executed for the same TTL
 	var maxTTL = flag.Int("m", DefaultMaxTTL, "Set the max TTL (Time To Live) (default is 30)")
 	var firstHop = flag.Int("f", DefaultFirstHop, "Set the first used Time-To-Live, e.g. the first hop (default is 1)")
-	var probes = flag.Int("p", DefatultProbes, "Set the number of probes per 'TTL'(default is one probe).")
 	var ipv6 = flag.Bool("ipv6", false, "Set to IPV6.")
 	var udp = flag.Bool("udp", false, "Set to UDP Mode.")
 	flag.Parse()
@@ -216,6 +217,6 @@ func main() {
 		return
 	}
 
-	traceRoute(host, maxTTL, firstHop, probes, proto, ipVersion)
+	traceRoute(host, maxTTL, firstHop,  proto, ipVersion)
 
 }
