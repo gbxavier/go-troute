@@ -112,6 +112,17 @@ func callHop(host string, ttl int, req []byte, proto string, dialProto string, d
 	return currentHop, nil
 }
 
+func printHop(hop Hop){
+
+	if hop.AddrIP == nil{
+		fmt.Printf("%d - * - Request timed out\n", hop.TTL)
+	}else{
+		fmt.Printf("%d - %v %v - time elapsed: %v\n", hop.TTL, hop.AddrIP, hop.AddrDNS, hop.Latency)
+	}
+		
+
+}
+
 func traceRoute(host string, maxTTL *int, firstHop *int, proto string, ipVersion int) {
 
 	var dialProto string
@@ -119,6 +130,7 @@ func traceRoute(host string, maxTTL *int, firstHop *int, proto string, ipVersion
 	var req = []byte{}
 	const DefaultTimeoutS int = 3
 	ttl := *firstHop
+	var found = false
 	
 	// Try to resolve the host provided, if name returns the ip address
 	ipAddr, err := net.ResolveIPAddr(fmt.Sprintf("ip%d", ipVersion), host)
@@ -129,7 +141,7 @@ func traceRoute(host string, maxTTL *int, firstHop *int, proto string, ipVersion
 	}
 
 	// User feedback of what will happen
-	fmt.Printf("Tracing route to %v [%v], over a maximum of %d hops, starting from %d:\n", host, ipAddr, *maxTTL, *firstHop)
+	fmt.Printf("Tracing route to %v [%v], over a maximum of %d hops, starting from %d:\n\n", host, ipAddr, *maxTTL, *firstHop)
 
 	// Specifying the configuration used in each iteration
 	//retry := 0
@@ -174,10 +186,21 @@ func traceRoute(host string, maxTTL *int, firstHop *int, proto string, ipVersion
 			fmt.Println(err)
 			return
 		}
-		fmt.Println(current)
-
+		printHop(current)
+		
+		if current.AddrIP.String() == ipAddr.IP.String(){
+			found = true
+			break
+		}
 
 	}
+
+	if found == false{
+		fmt.Println("Not Found, please consider increase TTL")
+	}else{
+		fmt.Println("\n Trace Complete")
+	}
+
 
 }
 
@@ -185,8 +208,7 @@ func main() {
 
 	// Default values, can be changed passing flags to the command.
 	const DefaultMaxTTL int = 30
-	const DefaultFirstHop int = 0
-	const DefatultProbes int = 1
+	const DefaultFirstHop int = 1
 
 	// The Default values are setted above, but the user is able to change this values passing the respective flags to the command
 	// maxTTL is equals the last TTL used on calls
