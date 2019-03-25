@@ -35,6 +35,7 @@ func createICMPEcho(ICMPTypeEcho icmp.Type) (req []byte, err error) {
 	return
 }
 
+// This function recieves the parameters to execute a single call to dest with the setted TTL, and returns a single Hop.
 func callHop(host string, ttl int, req []byte, proto string, dialProto string, dialDest string, ipVersion int, listenAddress string, timeout int) (currentHop Hop, err error){
 	
 
@@ -112,6 +113,7 @@ func callHop(host string, ttl int, req []byte, proto string, dialProto string, d
 	return currentHop, nil
 }
 
+// It Prints the received Hop, if the AddrIP is not null
 func printHop(hop Hop){
 
 	if hop.AddrIP == nil{
@@ -188,6 +190,7 @@ func traceRoute(host string, maxTTL *int, firstHop *int, proto string, ipVersion
 		listenAddress = "::0"
 	}
 
+	// Where the program iterate the calls until maxTTL or find the destination.
 	for i := ttl; i <= *maxTTL; i++ {
 
 		current, err := callHop(host, i, req, proto, dialProto, dialDest, ipVersion, listenAddress, DefaultTimeoutS)
