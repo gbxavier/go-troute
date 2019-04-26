@@ -35,7 +35,7 @@ func createICMPEcho(ICMPTypeEcho icmp.Type) (req []byte, err error) {
 	return
 }
 
-// This function recieves the parameters to execute a single call to dest with the setted TTL, and returns a single Hop.
+// This function receives the parameters to execute a single call to dest with the setted TTL, and returns a single Hop.
 func callHop(host string, ttl int, req []byte, proto string, dialProto string, dialDest string, ipVersion int, listenAddress string, timeout int) (currentHop Hop, err error){
 	
 
